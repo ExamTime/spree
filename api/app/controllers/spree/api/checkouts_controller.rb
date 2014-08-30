@@ -4,19 +4,33 @@ module Spree
       before_filter :load_order, :only => :update
       before_filter :associate_user, :only => :update
 
+      # Spree::Core::ControllerHelpers::Auth overrides 
+      # Spree::Api::BaseController's unauthorized method...
+      # Which is not a good thing.
+      # Here's a small hack to shuffle around the method.
+      alias_method :real_unauthorized, :unauthorized
       include Spree::Core::ControllerHelpers::Auth
       include Spree::Core::ControllerHelpers::Order
+      alias_method :unauthorized, :real_unauthorized
 
       respond_to :json
 
       def create
         @order = Order.build_from_api(current_api_user, nested_params)
-        next!(:status => 201)
+        respond_with(@order, :default_template => 'spree/api/orders/show', :status => 201)
       end
 
       def update
-        if @order.update_attributes(object_params)
-          state_callback(:after) if @order.next
+        authorize! :update, @order, params[:order_token]
+        respond_with(@order, :default_template => 'spree/api/orders/show') and return if @order.state == "complete"
+
+        if object_params && object_params[:user_id].present?
+          @order.update_attribute(:user_id, object_params[:user_id])
+          object_params.delete(:user_id)
+        end
+
+        if @order.update_attributes(object_params) && @order.next
+          state_callback(:after)
           respond_with(@order, :default_template => 'spree/api/orders/show')
         else
           respond_with(@order, :default_template => 'spree/api/orders/could_not_transition', :status => 422)
@@ -27,7 +41,8 @@ module Spree
 
         def object_params
           # For payment step, filter order parameters to produce the expected nested attributes for a single payment and its source, discarding attributes for payment methods other than the one selected
-          if @order.payment?
+          # respond_to check is necessary due to issue described in #2910
+          if @order.has_checkout_step?("payment") && @order.payment?
             if params[:payment_source].present? && source_params = params.delete(:payment_source)[params[:order][:payments_attributes].first[:payment_method_id].underscore]
               params[:order][:payments_attributes].first[:source_attributes] = source_params
             end

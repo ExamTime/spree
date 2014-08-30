@@ -18,13 +18,13 @@ add_image_handlers = ->
 
 show_variant_images = (variant_id) ->
   ($ 'li.vtmb').hide()
-  ($ 'li.vtmb-' + variant_id).show()
+  ($ 'li.tmb-' + variant_id).show()
   currentThumb = ($ '#' + ($ '#main-image').data('selectedThumbId'))
   if not currentThumb.hasClass('vtmb-' + variant_id)
-    thumb = ($ ($ 'ul.thumbnails li:visible.vtmb').eq(0))
-    thumb = ($ ($ 'ul.thumbnails li:visible').eq(0)) unless thumb.length > 0
+    thumb = ($ ($ '#product-images ul.thumbnails li:visible.vtmb').eq(0))
+    thumb = ($ ($ '#product-images ul.thumbnails li:visible').eq(0)) unless thumb.length > 0
     newImg = thumb.find('a').attr('href')
-    ($ 'ul.thumbnails li').removeClass 'selected'
+    ($ '#product-images ul.thumbnails li').removeClass 'selected'
     thumb.addClass 'selected'
     ($ '#main-image img').attr 'src', newImg
     ($ '#main-image').data 'selectedThumb', newImg
@@ -35,8 +35,13 @@ update_variant_price = (variant) ->
   ($ '.price.selling').text(variant_price) if variant_price
 
 $ ->
+  radios = ($ '#product-variants input[type="radio"]')
   add_image_handlers()
-  show_variant_images ($ '#product-variants input[type="radio"]').eq(0).attr('value') if ($ '#product-variants input[type="radio"]').length > 0
+
+  if radios.length > 0
+    show_variant_images radios.eq(0).attr('value') 
+    update_variant_price radios.first()
+
   ($ '#product-variants input[type="radio"]').click (event) ->
     show_variant_images @value
     update_variant_price ($ this)

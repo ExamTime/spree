@@ -17,14 +17,15 @@ module Spree
       go_to_state :delivery
       go_to_state :payment, :if => lambda { |order|
         # Fix for #2191
-        if order.shipping_method
+        # See #3708 also
+        if order.total.to_f <= 0 && order.shipping_method
           order.create_shipment!
           order.update_totals
         end
         order.payment_required?
       }
       go_to_state :confirm, :if => lambda { |order| order.confirmation_required? }
-      go_to_state :complete, :if => lambda { |order| (order.payment_required? && order.payments.exists?) || !order.payment_required? }
+      go_to_state :complete, :if => lambda { |order| (order.payment_required? && order.has_unprocessed_payments?) || !order.payment_required? }
       remove_transition :from => :delivery, :to => :confirm
     end
 
@@ -164,7 +165,19 @@ module Spree
 
     # If true, causes the confirmation step to happen during the checkout process
     def confirmation_required?
-      payment_method && payment_method.payment_profiles_supported?
+      payments.valid.map(&:payment_method).any?(&:payment_profiles_supported?)
+    end
+
+    # Used by the checkout state machine to check for unprocessed payments
+    # The Order should be only be able to proceed to complete if there are unprocessed
+    # payments and there is payment required.
+    #
+    # The reason for this is directly before an order transitions to complete, all
+    # of the order's payments have `process!` called on it (look in order/checkout.rb).
+    # If payment *is* required and there's no payments which haven't already been tried,
+    # then the order cannot be paid for and therefore should not be able to become complete.
+    def has_unprocessed_payments?
+      payments.with_state('checkout').reload.exists?
     end
 
     # Indicates the number of items in the order
@@ -214,7 +227,7 @@ module Spree
     end
 
     def updater
-      OrderUpdater.new(self)
+      @updater ||= OrderUpdater.new(self)
     end
 
     def update!
@@ -248,7 +261,7 @@ module Spree
     def awaiting_returns?
       return_authorizations.any? { |return_authorization| return_authorization.authorized? }
     end
-    
+
     def add_variant(variant, quantity = 1, currency = nil)
       current_item = find_line_item_by_variant(variant)
       if current_item
@@ -333,7 +346,7 @@ module Spree
     def create_shipment!
       shipping_method(true)
       if shipment.present?
-        shipment.update_attributes!(:shipping_method => shipping_method)
+        shipment.update_attributes!({:shipping_method => shipping_method, :inventory_units => self.inventory_units}, :without_protection => true)
       else
         self.shipments << Shipment.create!({ :order => self,
                                           :shipping_method => shipping_method,
@@ -375,11 +388,11 @@ module Spree
       adjustments.each { |adjustment| adjustment.update_column('locked', true) }
 
       # update payment and shipment(s) states, and save
-      updater = OrderUpdater.new(self)
       updater.update_payment_state
-      shipments.each { |shipment| shipment.update!(self) }
+      shipments.reload.each { |shipment| shipment.update!(self) }
       updater.update_shipment_state
       save
+      updater.run_hooks
 
       deliver_order_confirmation_email
 
@@ -393,7 +406,7 @@ module Spree
 
     def deliver_order_confirmation_email
       begin
-        OrderMailer.confirm_email(self).deliver
+        OrderMailer.confirm_email(self.id).deliver
       rescue Exception => e
         logger.error("#{e.class.name}: #{e.message}")
         logger.error(e.backtrace * "\n")
@@ -408,23 +421,8 @@ module Spree
     end
 
     def rate_hash
-      return @rate_hash if @rate_hash.present?
-
-      # reserve one slot for each shipping method computation
-      computed_costs = Array.new(available_shipping_methods(:front_end).size)
-
-      # create all the threads and kick off their execution
-      threads = available_shipping_methods(:front_end).each_with_index.map do |ship_method, index|
-        Thread.new { computed_costs[index] = [ship_method, ship_method.calculator.compute(self)] }
-      end      
-
-      # wait for all threads to finish
-      threads.map(&:join)
-
-      # now consolidate and memoize the threaded results
-      @rate_hash ||= computed_costs.map do |pair|
-        ship_method,cost = *pair
-        next unless cost
+      @rate_hash ||= available_shipping_methods.collect do |ship_method|
+        next unless cost = ship_method.calculator.compute(self)
         ShippingRate.new( :id => ship_method.id,
                           :shipping_method => ship_method,
                           :name => ship_method.name,
@@ -437,20 +435,8 @@ module Spree
       payment_state == 'paid'
     end
 
-    def payment
-      payments.first
-    end
-
     def available_payment_methods
       @available_payment_methods ||= PaymentMethod.available(:front_end)
-    end
-
-    def payment_method
-      if payment and payment.payment_method
-        payment.payment_method
-      else
-        available_payment_methods.first
-      end
     end
 
     def pending_payments
@@ -511,8 +497,8 @@ module Spree
     end
 
     def empty!
-      line_items.destroy_all
       adjustments.destroy_all
+      line_items.destroy_all
     end
 
     # destroy any previous adjustments.
@@ -530,13 +516,20 @@ module Spree
       state = "#{name}_state"
       if persisted?
         old_state = self.send("#{state}_was")
-        self.state_changes.create({
-          :previous_state => old_state,
-          :next_state     => self.send(state),
-          :name           => name,
-          :user_id        => self.user_id
-        }, :without_protection => true)
+        new_state = self.send(state)
+        if old_state != new_state
+          self.state_changes.create({
+            :previous_state => old_state,
+            :next_state     => self.send(state),
+            :name           => name,
+            :user_id        => self.user_id
+          }, :without_protection => true)
+        end
       end
+    end
+
+    def restart_checkout_flow
+      self.update_column(:state, checkout_steps.first) unless cart?
     end
 
     private
@@ -565,7 +558,7 @@ module Spree
         restock_items!
 
         #TODO: make_shipments_pending
-        OrderMailer.cancel_email(self).deliver
+        OrderMailer.cancel_email(self.id).deliver
         unless %w(partial shipped).include?(shipment_state)
           self.payment_state = 'credit_owed'
         end

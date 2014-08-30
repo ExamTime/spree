@@ -2,8 +2,9 @@ module Spree
   class OrdersController < Spree::StoreController
     ssl_required :show
 
+    before_filter :check_authorization
     rescue_from ActiveRecord::RecordNotFound, :with => :render_404
-    helper 'spree/products'
+    helper 'spree/products', 'spree/orders'
 
     respond_to :html
 
@@ -14,13 +15,19 @@ module Spree
 
     def update
       @order = current_order
+      unless @order
+        flash[:error] = t(:order_not_found)
+        redirect_to root_path and return
+      end
+
       if @order.update_attributes(params[:order])
         @order.line_items = @order.line_items.select {|li| li.quantity > 0 }
+        @order.restart_checkout_flow
         fire_event('spree.order.contents_changed')
         respond_with(@order) do |format|
           format.html do
             if params.has_key?(:checkout)
-              @order.next_transition.run_callbacks
+              @order.next_transition.run_callbacks if @order.cart?
               redirect_to checkout_state_path(@order.checkout_steps.first)
             else
               redirect_to cart_path
@@ -62,7 +69,19 @@ module Spree
     end
 
     def accurate_title
-      @order && @order.completed? ? "#{Order.model_name.human} #{@order.number}" : t(:shopping_cart)
+      @order && @order.completed? ? "#{t(:order)} #{@order.number}" : t(:shopping_cart)
     end
+
+    def check_authorization
+      session[:access_token] ||= params[:token]
+      order = Spree::Order.find_by_number(params[:id]) || current_order
+
+      if order
+        authorize! :edit, order, session[:access_token]
+      else
+        authorize! :create, Spree::Order
+      end
+    end
+
   end
 end

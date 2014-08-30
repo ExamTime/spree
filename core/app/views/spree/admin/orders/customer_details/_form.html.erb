@@ -16,17 +16,17 @@
           <ul>
             <% if @order.completed? %>
               <li>
-                <%= @order.user.nil? ? t(:yes) : t(:no) %>
+                <%= @order.user.nil? ? t(:say_yes) : t(:say_no) %>
               </li>
             <% else %>
               <% guest = @order.user.nil? || @order.user.anonymous? %>
               <li>
                 <%= radio_button_tag :guest_checkout, true, guest %>
-                <%= t(:yes) %>
+                <%= t(:say_yes) %>
               </li>
               <li>
                 <%= radio_button_tag :guest_checkout, false, !guest, :disabled => @order.cart? %>
-                <%= t(:no) %>  
+                <%= t(:say_no) %>
               </li>              
               <%= hidden_field_tag :user_id, @order.user_id %>
             <% end %>
@@ -61,6 +61,6 @@
   </div>
 
   <% content_for :head do %>
-    <%= javascript_include_tag states_path, 'admin/address_states.js' %>
+    <%= javascript_include_tag 'admin/states.js', 'admin/address_states.js' %>
   <% end %>
 </fieldset>

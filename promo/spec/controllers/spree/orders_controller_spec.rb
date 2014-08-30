@@ -1,6 +1,7 @@
 require 'spec_helper'
 
 describe Spree::OrdersController do
+  stub_authorization!
 
   let(:user) { create(:user) }
   let(:order) { user.spree_orders.create }
@@ -30,6 +31,11 @@ describe Spree::OrdersController do
       spree_put :update, :order => { :coupon_code => invalid_coupon_code }
       flash[:error].should == I18n.t(:coupon_code_not_found)
       response.should render_template :edit
+    end
+
+    it "resets the checkout flow" do
+      order.should_receive(:restart_checkout_flow)
+      spree_put :update, {}, {:order_id => 1}
     end
 
   end

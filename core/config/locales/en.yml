@@ -1,7 +1,7 @@
 ---
 en:
-  no: "No"
-  yes: "Yes"
+  say_no: "No"
+  say_yes: "Yes"
   a_copy_of_all_mail_will_be_sent_to_the_following_addresses: A copy of all mail be sent to the following addresses
   abbreviation: Abbreviation
   access_denied: "Access Denied"
@@ -209,6 +209,12 @@ en:
       spree/zone:
         one: Zone
         other: Zones
+    errors:
+      models:
+        spree/classification:
+          attributes:
+            taxon_id:
+              already_linked: "is already linked to this product"
   add: Add
   add_category: "Add Category"
   add_country: "Add Country"
@@ -279,7 +285,7 @@ en:
   back_to_payment_methods_list: "Back To Payment Methods List"
   back_to_payments_list: "Back To Payments List"
   back_to_products_list: "Back To Products List"
-  back_to_properties_list: "Back To Products List"
+  back_to_properties_list: "Back To Properties List"
   back_to_prototypes_list: "Back To Prototypes List"
   back_to_reports_list: "Back To Reports List"
   back_to_shipping_categories: "Back To Shipping Categories"
@@ -289,6 +295,7 @@ en:
   back_to_tax_categories_list: "Back To Tax Categories List"
   back_to_taxonomies_list: "Back To Taxonomies List"
   back_to_trackers_list: "Back To Trackers List"
+  back_to_users_list: "Back To Users List"
   back_to_zones_list: "Back To Zones List"
   backordered: Backordered
   backordering_is_allowed: "Backordering %{not} allowed"
@@ -360,8 +367,10 @@ en:
   credits: Credits
   current: Current
   currency: Currency
+  currency_decimal_mark: "Currency decimal mark"
   currency_symbol_position: "Put currency symbol before or after dollar amount?"
   currency_settings: "Currency Settings"
+  currency_thousands_separator: "Currency thousands separator"
   customer: Customer
   customer_details: "Customer Details"
   customer_details_updated: "The customer's details have been updated."
@@ -441,6 +450,8 @@ en:
       user:
         signup: 'User signup'
       page_view: "Static page viewed"
+  exceptions:
+    count_on_hand_setter: "Cannot set count_on_hand manually, as it is set automatically by the recalculate_count_on_hand callback. Please use `update_column(:count_on_hand, value)` instead."
   existing_customer: "Existing Customer"
   expiration: "Expiration"
   expiration_month: "Expiration Month"
@@ -595,6 +606,12 @@ en:
   no_match_found: "No Match Found"
   no_products_found: "No products found"
   no_results: "No results"
+  no_promotions_found: "No promotions found"
+  no_payment_methods_found: "No payment methods found"
+  no_results: "No results"
+  no_shipments_for_this_order: "There are no shipments for this order"
+  no_shipping_methods_found: "No shipping methods found"
+  no_trackers_found: "No Trackers Found"
   no_user_found: "No user was found with that email address"
   none: None
   none_available: "None Available"
@@ -644,9 +661,14 @@ en:
       order_summary_canceled: "Order Summary [CANCELED]"
       subtotal: "Subtotal: %{subtotal}"
       total: "Order Total: %{total}"
-  order_not_in_system: That order number is not valid on this site.
+  order_not_found: "We couldn't find your order. Please try that action again."
+  order_not_in_system: "That order number is not valid on this site."
   order_number: Order
   order_operation_authorize: Authorize
+  order_populator:
+    please_enter_reasonable_quantity: "Please enter a reasonable quantity."
+    remainder_message: "There are only %{on_hand} of %{item} remaining. Please select a quantity less than or equal to this value."
+    out_of_stock: "%{item} is out of stock."
   order_processed_but_following_items_are_out_of_stock: "Your order has been processed, but following items are out of stock:"
   order_processed_successfully: "Your order has been processed successfully"
   order_state:
@@ -691,6 +713,9 @@ en:
   pay: pay
   payment: Payment
   payment_actions: "Actions"
+  payment_counter:
+    one: "Payment #1"
+    other: "Payment #%{count}"
   payment_gateway: "Payment Gateway"
   payment_information: "Payment Information"
   payment_method: Payment Method
@@ -1030,6 +1055,7 @@ en:
   tax_categories: "Tax Categories"
   tax_categories_setting_description: "Set up tax categories to identify which products should be taxable."
   tax_category: "Tax Category"
+  tax_rate_amount_explanation: "Tax rates are a decimal amount to aid in calculations, (i.e. if the tax rate is 5% then enter 0.05)"
   tax_rates: "Tax Rates"
   tax_rates_description: Tax rates setup and configuration.
   tax_settings: "Tax Settings"
@@ -1108,7 +1134,6 @@ en:
   welcome_to_sample_store: "Welcome to the sample store"
   what_is_a_cvv: "What is a (CVV) Credit Card Code?"
   what_is_this: "What's This?"
-  whats_this: "What's this"
   width: Width
   year: "Year"
   you_have_been_logged_out: "You have been logged out."

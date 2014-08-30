@@ -2,7 +2,7 @@ require 'spree/core/action_callbacks'
 
 class Spree::Admin::ResourceController < Spree::Admin::BaseController
   helper_method :new_object_url, :edit_object_url, :object_url, :collection_url
-  before_filter :load_resource
+  before_filter :load_resource, :except => [:update_positions]
   rescue_from ActiveRecord::RecordNotFound, :with => :resource_not_found
 
   respond_to :html
@@ -40,6 +40,7 @@ class Spree::Admin::ResourceController < Spree::Admin::BaseController
 
   def create
     invoke_callbacks(:create, :before)
+    @object.attributes = params[object_name]
     if @object.save
       invoke_callbacks(:create, :after)
       flash[:success] = flash_message_for(@object, :successfully_created)
@@ -69,13 +70,13 @@ class Spree::Admin::ResourceController < Spree::Admin::BaseController
       invoke_callbacks(:destroy, :after)
       flash[:success] = flash_message_for(@object, :successfully_removed)
       respond_with(@object) do |format|
-        format.html { redirect_to collection_url }
+        format.html { redirect_to location_after_destroy }
         format.js   { render :partial => "spree/admin/shared/destroy" }
       end
     else
       invoke_callbacks(:destroy, :fails)
       respond_with(@object) do |format|
-        format.html { redirect_to collection_url }
+        format.html { redirect_to location_after_destroy }
       end
     end
   end
@@ -134,15 +135,25 @@ class Spree::Admin::ResourceController < Spree::Admin::BaseController
     def load_resource
       if member_action?
         @object ||= load_resource_instance
+
+        # call authorize! a third time (called twice already in Admin::BaseController)
+        # this time we pass the actual instance so fine-grained abilities can control
+        # access to individual records, not just entire models.
+        authorize! action, @object
+
         instance_variable_set("@#{object_name}", @object)
       else
         @collection ||= collection
+
+        # note: we don't call authorize here as the collection method should use
+        # CanCan's accessible_by method to restrict the actual records returned
+
         instance_variable_set("@#{controller_name}", @collection)
       end
     end
 
     def load_resource_instance
-      if new_actions.include?(params[:action].to_sym)
+      if new_actions.include?(action)
         build_resource
       elsif params[:id]
         find_resource
@@ -172,19 +183,23 @@ class Spree::Admin::ResourceController < Spree::Admin::BaseController
 
     def build_resource
       if parent_data.present?
-        parent.send(controller_name).build(params[object_name])
+        parent.send(controller_name).build
       else
-        model_class.new(params[object_name])
+        model_class.new
       end
     end
 
     def collection
       return parent.send(controller_name) if parent_data.present?
       if model_class.respond_to?(:accessible_by) && !current_ability.has_block?(params[:action], model_class)
-        model_class.accessible_by(current_ability)
+        model_class.accessible_by(current_ability, action)
       else
         model_class.scoped
       end
+    end
+
+    def location_after_destroy
+      collection_url
     end
 
     def location_after_save
@@ -241,7 +256,7 @@ class Spree::Admin::ResourceController < Spree::Admin::BaseController
     end
 
     def member_action?
-      !collection_actions.include? params[:action].to_sym
+      !collection_actions.include? action
     end
 
     def new_actions

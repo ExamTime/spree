@@ -106,13 +106,7 @@ module Spree
       def destroy
         @taxon = Taxon.find(params[:id])
         @taxon.destroy
-        respond_with(@taxon) { |format| format.json { render :json => '' } }
-      end
-
-      private
-
-      def load_product
-        Product.find_by_permalink! params[:product_id]
+        render :text => "", :status => 204
       end
 
     end

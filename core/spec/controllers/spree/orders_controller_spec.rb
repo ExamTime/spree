@@ -2,7 +2,7 @@ require 'spec_helper'
 
 describe Spree::OrdersController do
   let(:user) { create(:user) }
-  let(:order) { mock_model(Spree::Order, :number => "R123", :reload => nil, :save! => true, :coupon_code => nil, :user => user, :completed? => false, :currency => "USD")}
+  let(:order) { mock_model(Spree::Order, :number => "R123", :reload => nil, :save! => true, :coupon_code => nil, :user => user, :completed? => false, :currency => "USD", :token => 'a1b2c3d4')}
   before do
     # Don't care about IP address being set here
     order.stub(:last_ip_address=)
@@ -11,6 +11,8 @@ describe Spree::OrdersController do
     if Spree::BaseController.spree_responders[:OrdersController].present?
       Spree::BaseController.spree_responders[:OrdersController].clear
     end
+
+    controller.stub(:try_spree_current_user => user)
   end
 
   context "#populate" do
@@ -48,6 +50,7 @@ describe Spree::OrdersController do
       order.stub(:line_items).and_return([])
       order.stub(:line_items=).with([])
       order.stub(:last_ip_address=)
+      order.stub(:restart_checkout_flow)
       Spree::Order.stub(:find_by_id_and_currency).and_return(order)
     end
 
@@ -68,16 +71,33 @@ describe Spree::OrdersController do
       spree_put :update, {}, {:order_id => 1}
       response.should redirect_to(spree.cart_path)
     end
+
+    it "resets the checkout flow" do
+      order.should_receive(:restart_checkout_flow)
+      spree_put :update, {}, {:order_id => 1}
+    end
   end
 
   context "#empty" do
     it "should destroy line items in the current order" do
-      controller.stub!(:current_order).and_return(order)
+      controller.stub(:current_order).and_return(order)
       order.should_receive(:empty!)
       spree_put :empty
       response.should redirect_to(spree.cart_path)
     end
   end
 
-  #TODO - move some of the assigns tests based on session, etc. into a shared example group once new block syntax released
+  # Regression test for #2750
+  context "#update" do
+    before do
+      user.stub :last_incomplete_spree_order
+      controller.stub :set_current_order
+    end
+
+    it "cannot update a blank order" do
+      spree_put :update, :order => { :email => "foo" }
+      flash[:error] = I18n.t(:order_edit)
+      response.should redirect_to(spree.root_path)
+    end
+  end
 end

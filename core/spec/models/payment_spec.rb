@@ -6,31 +6,31 @@ describe Spree::Payment do
                              :ship_address => Spree::Address.new)
   end
 
-  let(:gateway) do
-    gateway = Spree::Gateway::Bogus.new({:environment => 'test', :active => true}, :without_protection => true)
-    gateway.stub :source_required => true
-    gateway
-  end
-
   let(:card) do
     mock_model(Spree::CreditCard, :number => "4111111111111111",
                                   :has_payment_profile? => true)
   end
+
+  let(:gateway) { create(:bogus_payment_method) }
 
   let(:payment) do
     payment = Spree::Payment.new
     payment.source = card
     payment.order = order
     payment.payment_method = gateway
+    payment.amount = 100
     payment
   end
 
   let(:amount_in_cents) { payment.amount.to_f * 100 }
 
+  let(:currency) { 'USD' }
+
   let!(:success_response) do
     mock('success_response', :success? => true,
                              :authorization => '123',
-                             :avs_result => { 'code' => 'avs-code' })
+                             :avs_result => { 'code' => 'avs-code' },
+                             :cvv_result => { 'code' => 'cvv-code', 'message' => "CVV Result"})
   end
 
   let(:failed_response) { mock('gateway_response', :success? => false) }
@@ -38,6 +38,7 @@ describe Spree::Payment do
   before(:each) do
     # So it doesn't create log entries every time a processing method is called
     payment.log_entries.stub(:create)
+    order.stub(:currency) { currency }
   end
 
   # Regression test for https://github.com/spree/spree/pull/2224
@@ -55,6 +56,14 @@ describe Spree::Payment do
       payment.state.should eql('failed')
     end
 
+  end
+
+  context 'invalidate' do
+    it 'should transition from checkout to invalid' do
+      payment.state = 'checkout'
+      payment.invalidate
+      payment.state.should eq('invalid')
+    end
   end
 
   context "processing" do
@@ -79,6 +88,12 @@ describe Spree::Payment do
       it "should make the state 'processing'" do
         payment.should_receive(:started_processing!)
         payment.process!
+      end
+
+      it "should invalidate if payment method doesnt support source" do
+        payment.payment_method.should_receive(:supports?).with(payment.source).and_return(false)
+        lambda { payment.process!}.should raise_error(Spree::Core::GatewayError)
+        payment.state.should eq('invalid')
       end
 
     end
@@ -118,10 +133,12 @@ describe Spree::Payment do
                                                                  anything).and_return(success_response)
         end
 
-        it "should store the response_code and avs_response" do
+        it "should store the response_code, avs_response and cvv_response fields" do
           payment.authorize!
           payment.response_code.should == '123'
           payment.avs_response.should == 'avs-code'
+          payment.cvv_response_code.should == 'cvv-code'
+          payment.cvv_response_message.should == 'CVV Result'
         end
 
         it "should make payment pending" do
@@ -200,19 +217,47 @@ describe Spree::Payment do
         end
 
         context "if successful" do
-          before do
-            payment.payment_method.should_receive(:capture).with(payment, card, anything).and_return(success_response)
+          context "when profiles are supported" do
+            before do
+              payment.payment_method.should_receive(:capture).with(payment, card, anything).and_return(success_response)
+            end
+
+            it "should make payment complete" do
+              payment.should_receive(:complete)
+              payment.capture!
+            end
+
+            it "should store the response_code" do
+              gateway.stub :capture => success_response
+              payment.capture!
+              payment.response_code.should == '123'
+            end
           end
 
-          it "should make payment complete" do
-            payment.should_receive(:complete)
-            payment.capture!
-          end
+          context "when profiles are not supported" do
+            before do
+              gateway.stub(:payment_profiles_supported?) { false }
+              gateway.should_receive(:capture).with(expected_amount, nil, anything).and_return(success_response)
+            end
 
-          it "should store the response_code" do
-            gateway.stub :capture => success_response
-            payment.capture!
-            payment.response_code.should == '123'
+            context "when currency has decimal places" do
+              let(:expected_amount) { 10000 }
+
+              it "should make payment complete" do
+                payment.should_receive(:complete)
+                payment.capture!
+              end
+            end
+
+            context "when currency does not have decimal places" do
+              let(:expected_amount) { 100 }
+              let(:currency) { 'JPY' }
+
+              it "should make payment complete" do
+                payment.should_receive(:complete)
+                payment.capture!
+              end
+            end
           end
         end
 
@@ -468,7 +513,11 @@ describe Spree::Payment do
 
   context "#save" do
     it "should call order#update!" do
-      payment = Spree::Payment.create({:amount => 100, :order => order}, :without_protection => true)
+      payment = Spree::Payment.create(
+        {:amount => 100, :order => order, payment_method: gateway},
+        :without_protection => true
+      )
+
       order.should_receive(:update!)
       payment.save
     end
@@ -561,6 +610,23 @@ describe Spree::Payment do
 
     it "contains an IP" do
       payment.gateway_options[:ip].should == order.last_ip_address
+    end
+  end
+
+  # Regression test for #1998
+  context "#set_unique_identifier" do
+
+    it "sets a unique identifier on create" do
+      payment.run_callbacks(:create)
+      payment.identifier.should_not be_blank
+    end
+
+    # Regression test for #3733
+    it "does not regenerate the identifier on re-save" do
+      payment.save
+      old_identifier = payment.identifier
+      payment.save
+      payment.identifier.should == old_identifier
     end
   end
 end

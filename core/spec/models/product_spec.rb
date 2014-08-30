@@ -1,5 +1,4 @@
 # coding: UTF-8
-
 require 'spec_helper'
 
 describe Spree::Product do
@@ -7,6 +6,14 @@ describe Spree::Product do
     it "should not complain of a missing master" do
       product = Spree::Product.new
       product.on_hand = 5
+    end
+  end
+
+  context "#count_on_hand=" do
+    it "cannot be set manually" do
+      product = Spree::Product.new
+      setter = lambda { product.count_on_hand = 5 }
+      setter.should raise_error(I18n.t('exceptions.count_on_hand_setter'))
     end
   end
 
@@ -29,6 +36,64 @@ describe Spree::Product do
         clone.master.sku.should == 'COPY OF ' + product.master.sku
         clone.taxons.should == product.taxons
         clone.images.size.should == product.images.size
+      end
+    end
+
+    context "master variant" do
+      context "when master variant changed" do
+        before do
+          product.master.sku = "Something changed"
+        end
+
+        it "saves the master" do
+          product.master.should_receive(:save)
+          product.save
+        end
+      end
+
+      context "when master default price is a new record" do
+        before do
+          @price = product.master.build_default_price
+          @price.price = 12
+        end
+
+        it "saves the master" do
+          product.master.should_receive(:save)
+          product.save
+        end
+
+        it "saves the default price" do
+          proc do
+            product.save
+          end.should change{ @price.new_record? }.from(true).to(false)
+        end
+
+      end
+
+      context "when master default price changed" do
+        before do
+          master = product.master
+          master.default_price = create(:price, :variant => master)
+          master.save!
+          product.master.default_price.price = 12
+        end
+
+        it "saves the master" do
+          product.master.should_receive(:save)
+          product.save
+        end
+
+        it "saves the default price" do
+          product.master.default_price.should_receive(:save)
+          product.save
+        end
+      end
+
+      context "when master variant and price haven't changed" do
+        it "does not save the master" do
+          product.master.should_not_receive(:save)
+          product.save
+        end
       end
     end
 
@@ -109,7 +174,7 @@ describe Spree::Product do
         before { Spree::Config[:display_currency] = true }
 
         it "shows the currency" do
-          product.display_price.should == "$10.55 USD"
+          product.display_price.to_s.should == "$10.55 USD"
         end
       end
 
@@ -117,7 +182,7 @@ describe Spree::Product do
         before { Spree::Config[:display_currency] = false }
 
         it "does not include the currency" do
-          product.display_price.should == "$10.55"
+          product.display_price.to_s.should == "$10.55"
         end
       end
 
@@ -222,19 +287,16 @@ describe Spree::Product do
         end
       end
 
-      context "make_permalink should declare validates_uniqueness_of" do
+      context "permalinks must be unique" do
         before do
           @product1 = create(:product, :name => 'foo')
+        end
+
+        it "cannot create another product with the same permalink" do
           @product2 = create(:product, :name => 'foo')
-          @product2.update_attributes(:permalink => 'foo')
-        end
-
-        it "should have an error" do
-          @product2.errors.size.should == 1
-        end
-
-        it "should have error message that permalink is already taken" do
-          @product2.errors.full_messages.first.should == 'Permalink has already been taken'
+          lambda do
+            @product2.update_attributes(:permalink => @product1.permalink)
+          end.should raise_error(ActiveRecord::RecordNotUnique)
         end
       end
 
@@ -422,7 +484,19 @@ describe Spree::Product do
     it "should be sorted by position" do
       product.images.pluck(:alt).should eq(["position 1", "position 2"])
     end
+  end
 
+  # Regression tests for #2352
+  context "classifications and taxons" do
+    it "is joined through classifications" do
+      reflection = Spree::Product.reflect_on_association(:taxons)
+      reflection.options[:through] = :classifications
+    end
+
+    it "will delete all classifications" do
+      reflection = Spree::Product.reflect_on_association(:classifications)
+      reflection.options[:dependent] = :delete_all
+    end
   end
 
 end

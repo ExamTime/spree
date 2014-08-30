@@ -1,5 +1,6 @@
 <% # Usage of old-style form helpers in this file is INTENTIONAL
-   # For reasons, see commit 3e981c7. %>
+   # For reasons, see commit 3e981c7. 
+   %>
 <div data-hook="admin_payment_method_form_fields">
 
   <div data-hook="payment_method">
@@ -30,11 +31,11 @@
         <ul>
           <li>
             <%= radio_button :payment_method, :active, true %>
-            <%= label_tag nil, t(:yes) %>
+            <%= label_tag nil, t(:say_yes) %>
           </li>        
           <li>
             <%= radio_button :payment_method, :active, false %>
-            <%= label_tag nil, t(:no) %>
+            <%= label_tag nil, t(:say_no) %>
           </li>
         </ul>
       </div>

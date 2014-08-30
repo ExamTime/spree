@@ -131,7 +131,7 @@ describe Spree::Order do
         before do
           order.stub :confirmation_required? => false
           order.stub :payment_required? => true
-          order.stub_chain(:payments, :exists?).and_return(true)
+          order.stub_chain(:has_unprocessed_payments?).and_return(true)
         end
 
         it "transitions to complete" do
@@ -166,7 +166,7 @@ describe Spree::Order do
       end
     end
 
-    it "should only call default transitions once when checkout_flow is redefined" do
+    pending "should only call default transitions once when checkout_flow is redefined" do
       order = SubclassedOrder.new
       order.stub :payment_required? => true
       order.should_receive(:process_payments!).once
@@ -188,7 +188,7 @@ describe Spree::Order do
     end
 
     after do
-      Spree::Order.checkout_flow = @old_checkout_flow
+      Spree::Order.checkout_flow(&@old_checkout_flow)
     end
 
     it "should not keep old event transitions when checkout_flow is redefined" do
@@ -202,6 +202,91 @@ describe Spree::Order do
       known_states.should_not include(:address)
       known_states.should_not include(:delivery)
       known_states.should_not include(:confirm)
+    end
+  end
+
+  context "insert checkout step" do
+    before do 
+      @old_checkout_flow = Spree::Order.checkout_flow
+      Spree::Order.class_eval do
+        insert_checkout_step :new_step, :before => :address
+      end
+    end
+
+    after do
+      Spree::Order.checkout_flow(&@old_checkout_flow)
+    end
+
+    it "should maintain removed transitions" do
+      transition = Spree::Order.find_transition(:from => :delivery, :to => :confirm)
+      transition.should be_nil
+    end
+
+    context "before" do
+      before do
+        Spree::Order.class_eval do
+          insert_checkout_step :before_address, :before => :address
+        end
+      end
+
+      specify do
+        order = Spree::Order.new
+        order.checkout_steps.should == %w(new_step before_address address delivery complete)
+      end
+    end
+
+    context "after" do
+      before do
+        Spree::Order.class_eval do
+          insert_checkout_step :after_address, :after => :address
+        end
+      end
+
+      specify do
+        order = Spree::Order.new
+        order.checkout_steps.should == %w(new_step address after_address delivery complete)
+      end
+    end
+  end
+
+  context "remove checkout step" do
+    before do 
+      @old_checkout_flow = Spree::Order.checkout_flow
+      Spree::Order.class_eval do
+        remove_checkout_step :address
+      end
+    end
+
+    after do
+      Spree::Order.checkout_flow(&@old_checkout_flow)
+    end
+
+    it "should maintain removed transitions" do
+      transition = Spree::Order.find_transition(:from => :delivery, :to => :confirm)
+      transition.should be_nil
+    end
+
+    specify do
+      order = Spree::Order.new
+      order.checkout_steps.should == %w(delivery complete)
+    end
+  end
+
+  describe "payment processing" do
+    let(:order) { OrderWalkthrough.up_to(:payment) }
+    let(:creditcard) { create(:credit_card) }
+    let!(:payment_method) { create(:bogus_payment_method, :environment => 'test') }
+
+    it "does not process payment within transaction", :truncate => true do
+      # Make sure we are not already in a transaction
+      ActiveRecord::Base.connection.open_transactions.should == 0
+
+      Spree::Payment.any_instance.should_receive(:authorize!) do
+        ActiveRecord::Base.connection.open_transactions.should == 0
+      end
+
+      order.payments.create!({ :amount => order.outstanding_balance, :payment_method => payment_method, :source => creditcard }, :without_protection => true)
+      order.next!
     end
   end
 end

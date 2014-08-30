@@ -34,11 +34,10 @@ module Spree
         :total => order.total
       })
 
-      #ensure checkout payment always matches order total
-      if order.payment and order.payment.checkout? and order.payment.amount != order.total
-        order.payment.update_attributes_without_callbacks(:amount => order.total)
-      end
+      run_hooks
+    end
 
+    def run_hooks
       update_hooks.each { |hook| order.send hook }
     end
 

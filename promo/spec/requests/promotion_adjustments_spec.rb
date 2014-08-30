@@ -4,14 +4,26 @@ describe "Promotion Adjustments" do
   stub_authorization!
 
   context "coupon promotions", :js => true do
+    let!(:zone) { create(:zone) }
+    let!(:shipping_method) do
+      sm = create(:shipping_method, :zone => zone)
+      sm.calculator.set_preference(:amount, 10)
+      sm
+    end
+    let!(:country) do
+      country = create(:country)
+      shipping_method.zone.zone_members.create!(:zoneable => country)
+      country
+    end
+    let!(:state) { create(:state, :country => country) }
+    let!(:address) { create(:address, :state => state, :country => country) }
+
     before(:each) do
       # creates a default shipping method which is required for checkout
       create(:bogus_payment_method, :environment => 'test')
       # creates a check payment method so we don't need to worry about cc details
       create(:payment_method)
 
-      sm = create(:shipping_method, :zone => Spree::Zone.find_by_name('North America'))
-      sm.calculator.set_preference(:amount, 10)
 
       user = create(:admin_user)
       create(:product, :name => "RoR Mug", :price => "40")
@@ -21,8 +33,6 @@ describe "Promotion Adjustments" do
       click_link "Promotions"
       click_link "New Promotion"
     end
-
-    let!(:address) { create(:address, :state => Spree::State.first) }
 
     it "should properly populate Spree::Product#possible_promotions" do
       promotion = create_per_product_promotion 'RoR Mug', 5.0
@@ -187,31 +197,13 @@ describe "Promotion Adjustments" do
       visit spree.root_path
       click_link "RoR Bag"
       click_button "Add To Cart"
-      click_button "Checkout"
-
-      fill_in "Customer E-Mail", :with => "spree@example.com"
-      str_addr = "bill_address"
-      select "United States", :from => "order_#{str_addr}_attributes_country_id"
-      ['firstname', 'lastname', 'address1', 'city', 'zipcode', 'phone'].each do |field|
-        fill_in "order_#{str_addr}_attributes_#{field}", :with => "#{address.send(field)}"
-      end
-      select "#{address.state.name}", :from => "order_#{str_addr}_attributes_state_id"
-      check "order_use_billing"
-      click_button "Save and Continue"
-      click_button "Save and Continue"
-
-      choose('Credit Card')
-      fill_in "card_number", :with => "4111111111111111"
-      fill_in "card_code", :with => "123"
-      click_button "Save and Continue"
-      Spree::Order.last.total.to_f.should == 30.00 # bag(20) + shipping(10)
-      page.should_not have_content("Free Shipping")
 
       visit spree.root_path
       click_link "RoR Mug"
       click_button "Add To Cart"
-      click_button "Checkout"
+      click_button "Checkout" 
 
+      fill_in "Customer E-Mail", :with => "spree@example.com"
       str_addr = "bill_address"
       select "United States", :from => "order_#{str_addr}_attributes_country_id"
       ['firstname', 'lastname', 'address1', 'city', 'zipcode', 'phone'].each do |field|
@@ -293,7 +285,7 @@ describe "Promotion Adjustments" do
       sleep(1)
       page.execute_script "$('.create_line_items .select2-choice').mousedown();"
       sleep(1)
-      page.execute_script "$('.select2-focused').val('RoR Mug').trigger('keyup-change');"
+      page.execute_script "$('.select2-input:visible').val('RoR Mug').trigger('keyup-change');"
       sleep(1)
       page.execute_script "$('.select2-highlighted').mouseup();"
 

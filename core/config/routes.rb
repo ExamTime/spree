@@ -20,8 +20,9 @@ Spree::Core::Engine.routes.draw do
   end
 
   get '/orders/populate', :via => :get, :to => populate_redirect
+  match '/orders/:id/token/:token' => 'orders#show', :via => :get, :as => :token_order
 
-  resources :orders do
+  resources :orders, :except => [:new, :create] do
     post :populate, :on => :collection
   end
 
@@ -53,7 +54,11 @@ Spree::Core::Engine.routes.draw do
         get :search
       end
 
-      resources :product_properties
+      resources :product_properties do
+        collection do
+          post :update_positions
+        end
+      end
       resources :images do
         collection do
           post :update_positions
@@ -137,9 +142,9 @@ Spree::Core::Engine.routes.draw do
     end
 
     resources :taxonomies do
-    	collection do
-    		post :update_positions
-    	end
+      collection do
+        post :update_positions
+      end
       member do
         get :get_children
       end

@@ -14,9 +14,21 @@ Gem::PackageTask.new(spec) do |pkg|
   pkg.gem_spec = spec
 end
 
+task :default => :test
+
+desc "Runs all tests in all Spree engines"
+task :test do
+  Rake::Task['test_app'].invoke
+  %w(api core promo).each do |gem_name|
+    Dir.chdir("#{File.dirname(__FILE__)}/#{gem_name}") do
+      system("rspec --fail-fast") or exit!(1)
+    end
+  end
+end
+
 desc "Generates a dummy app for testing for every Spree engine"
 task :test_app do
-  %w(api core dash promo).each do |engine|
+  %w(api core promo).each do |engine|
     ENV['LIB_NAME'] = File.join('spree', engine)
     ENV['DUMMY_PATH'] = File.expand_path("../#{engine}/spec/dummy", __FILE__)
     Rake::Task['common:test_app'].execute
@@ -30,7 +42,7 @@ task :clean do
   puts "Deleting pkg directory.."
   FileUtils.rm_rf("pkg")
 
-  %w(api cmd core dash promo).each do |gem_name|
+  %w(api cmd core promo).each do |gem_name|
     puts "Cleaning #{gem_name}:"
     puts "  Deleting #{gem_name}/Gemfile"
     FileUtils.rm_f("#{gem_name}/Gemfile")
@@ -46,7 +58,7 @@ end
 namespace :gem do
   desc "run rake gem for all gems"
   task :build do
-    %w(core api dash promo sample cmd).each do |gem_name|
+    %w(core api promo sample cmd).each do |gem_name|
       puts "########################### #{gem_name} #########################"
       puts "Deleting #{gem_name}/pkg"
       FileUtils.rm_rf("#{gem_name}/pkg")
@@ -63,7 +75,7 @@ namespace :gem do
   task :install do
     version = File.read(File.expand_path("../SPREE_VERSION", __FILE__)).strip
 
-    %w(core api dash promo sample cmd).each do |gem_name|
+    %w(core api promo sample cmd).each do |gem_name|
       puts "########################### #{gem_name} #########################"
       puts "Deleting #{gem_name}/pkg"
       FileUtils.rm_rf("#{gem_name}/pkg")
@@ -82,7 +94,7 @@ namespace :gem do
   task :release do
     version = File.read(File.expand_path("../SPREE_VERSION", __FILE__)).strip
 
-    %w(core api dash promo sample cmd).each do |gem_name|
+    %w(core api promo sample cmd).each do |gem_name|
       puts "########################### #{gem_name} #########################"
       cmd = "cd #{gem_name}/pkg && gem push spree_#{gem_name}-#{version}.gem"; puts cmd; system cmd
     end

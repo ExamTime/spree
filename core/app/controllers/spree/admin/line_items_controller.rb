@@ -26,7 +26,8 @@ module Spree
       def destroy
         @line_item.destroy
         respond_with(@line_item) do |format|
-          format.html { render :partial => 'spree/admin/orders/form', :locals => { :order => @order.reload } }
+          format.html { redirect_to edit_admin_order_path(@order) }
+          format.js { @order.reload }
         end
       end
 
@@ -46,6 +47,7 @@ module Spree
 
         def load_order
           @order = Order.find_by_number!(params[:order_id])
+          authorize! action, @order
         end
 
         def load_line_item

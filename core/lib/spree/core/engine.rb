@@ -1,3 +1,5 @@
+require 'rabl'
+
 module Spree
   module Core
     class Engine < ::Rails::Engine
@@ -71,7 +73,11 @@ module Spree
 
       # filter sensitive information during logging
       initializer "spree.params.filter" do |app|
-        app.config.filter_parameters += [:password, :password_confirmation, :number]
+        app.config.filter_parameters += [
+          :password,
+          :password_confirmation,
+          :number,
+          :verification_value]
       end
 
       # sets the manifests / assets to be precompiled, even when initialize_on_precompile is false
@@ -81,6 +87,7 @@ module Spree
           admin/all.*
           admin/orders/edit_form.js
           admin/address_states.js
+          admin/states.js
           jqPlot/excanvas.min.js
           admin/images/new.js
           jquery.jstree/themes/apple/*

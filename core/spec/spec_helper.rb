@@ -21,6 +21,7 @@ require 'spree/core/url_helpers'
 require 'paperclip/matchers'
 
 RSpec.configure do |config|
+  config.color = true
   config.mock_with :rspec
 
   config.fixture_path = "#{::Rails.root}/spec/fixtures"
@@ -32,7 +33,7 @@ RSpec.configure do |config|
   config.use_transactional_fixtures = false
 
   config.before(:each) do
-    if example.metadata[:js]
+    if example.metadata[:js] || example.metadata[:truncate]
       DatabaseCleaner.strategy = :truncation
     else
       DatabaseCleaner.strategy = :transaction

@@ -7,8 +7,6 @@ module Spree
             helper_method :title
             helper_method :title=
             helper_method :accurate_title
-            helper_method :current_order
-            helper_method :current_currency
 
             layout :get_layout
 
@@ -31,14 +29,14 @@ module Spree
         end
 
         # can be used in views as well as controllers.
-        # e.g. <% title = 'This is a custom title for this view' %>
+        # e.g. <% self.title = 'This is a custom title for this view' %>
         attr_writer :title
 
         def title
           title_string = @title.present? ? @title : accurate_title
           if title_string.present?
             if Spree::Config[:always_put_site_name_in_title]
-              [default_title, title_string].join(' - ')
+              [title_string, default_title].join(' - ')
             else
               title_string
             end
@@ -56,10 +54,6 @@ module Spree
           Spree::Config[:default_seo_title]
         end
 
-        def current_currency
-          Spree::Config[:currency]
-        end
-
         def render_404(exception = nil)
           respond_to do |type|
             type.html { render :status => :not_found, :file    => "#{::Rails.root}/public/404", :formats => [:html], :layout => nil}
@@ -67,17 +61,13 @@ module Spree
           end
         end
 
-        def ip_address
-          request.env['HTTP_X_REAL_IP'] || request.env['REMOTE_ADDR']
-        end
-
         private
 
         def set_user_language
           locale = session[:locale]
           locale ||= Rails.application.config.i18n.default_locale
-          locale ||= I18n.default_locale unless I18n.available_locales.include?(locale.try(:to_sym))
-          I18n.locale = locale.to_sym
+          locale ||= I18n.default_locale unless I18n.available_locales.map(&:to_s).include?(locale)
+          I18n.locale = locale
         end
 
         # Returns which layout to render.

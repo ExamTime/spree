@@ -112,6 +112,7 @@ describe Spree::Order do
     end
 
     it "should change the shipment state to ready if order is paid" do
+      order.inventory_units << FactoryGirl.create(:inventory_unit)
       order.stub :shipping_method => mock_model(Spree::ShippingMethod, :create_adjustment => true, :adjustment_label => "Shipping")
       order.create_shipment!
       order.stub(:paid? => true, :complete? => true)
@@ -130,13 +131,13 @@ describe Spree::Order do
 
     it "should send an order confirmation email" do
       mail_message = mock "Mail::Message"
-      Spree::OrderMailer.should_receive(:confirm_email).with(order).and_return mail_message
+      Spree::OrderMailer.should_receive(:confirm_email).with(order.id).and_return mail_message
       mail_message.should_receive :deliver
       order.finalize!
     end
 
     it "should continue even if confirmation email delivery fails" do
-      Spree::OrderMailer.should_receive(:confirm_email).with(order).and_raise 'send failed!'
+      Spree::OrderMailer.should_receive(:confirm_email).with(order.id).and_raise 'send failed!'
       order.finalize!
     end
 
@@ -154,9 +155,19 @@ describe Spree::Order do
       order.finalize!
     end
 
-    it "should log state event" do
-      order.state_changes.should_receive(:create).exactly(3).times #order, shipment & payment state changes
+    it "should log state events" do
       order.finalize!
+      payment_state_changes = order.state_changes.where(:name => "payment")
+      payment_state_changes.count.should == 1
+      payment_state_change = payment_state_changes.first
+      payment_state_change.previous_state.should be_nil
+      payment_state_change.next_state.should == "balance_due"
+
+      order_state_changes = order.state_changes.where(:name => "order")
+      order_state_changes.count.should == 1
+      order_state_change = order_state_changes.first
+      order_state_change.previous_state.should == "cart"
+      order_state_change.next_state.should == "complete"
     end
   end
 
@@ -225,20 +236,6 @@ describe Spree::Order do
       Spree::Config.set :track_inventory_levels => false
       order.stub_chain(:inventory_units, :backordered).and_return [mock_model(Spree::InventoryUnit)]
       order.backordered?.should be_false
-    end
-  end
-
-  context "#payment_method" do
-    it "should return payment.payment_method if payment is present" do
-      payments = [create(:payment)]
-      payments.stub(:completed => payments)
-      order.stub(:payments => payments)
-      order.payment_method.should == order.payments.first.payment_method
-    end
-
-    it "should return the first payment method from available_payment_methods if payment is not present" do
-      create(:payment_method, :environment => 'test')
-      order.payment_method.should == order.available_payment_methods.first
     end
   end
 
@@ -482,6 +479,65 @@ describe Spree::Order do
       persisted_order.shipping_method = shipping_method
       persisted_order.next!
       persisted_order.state.should == "payment"
+    end
+  end
+
+  # Related to the fix for #2694
+  context "#has_unprocessed_payments?" do
+    let!(:persisted_order) { create(:order) }
+
+    context "with payments in the 'checkout' state" do
+      before do
+        create(:payment, :order => persisted_order, :state => 'checkout')
+      end
+
+      it "returns true" do
+        assert persisted_order.has_unprocessed_payments?
+      end
+    end
+
+    context "with no payments in the 'checkout' state" do
+      it "returns false" do
+        assert !persisted_order.has_unprocessed_payments?
+      end
+    end
+  end
+
+  context "add_update_hook" do
+    before do
+      Spree::Order.class_eval do
+        register_update_hook :add_awesome_sauce
+      end
+    end
+
+    after do
+      Spree::Order.update_hooks = Set.new
+    end
+
+    it "calls hook during update" do
+      order = create(:order)
+      order.should_receive(:add_awesome_sauce)
+      order.update!
+    end
+
+    it "calls hook during finalize" do
+      order = create(:order)
+      order.should_receive(:add_awesome_sauce)
+      order.finalize!
+    end
+  end
+
+  context "#restart_checkout_flow" do
+    it "updates the state column to the first checkout step" do
+      order = create(:order, :state => "confirm")
+      expect do 
+        order.restart_checkout_flow
+      end.to(change { order.state }.from("confirm").to(order.checkout_steps.first))
+    end
+
+    it "does not update the state if the state is cart" do
+      order = create(:order, :state => "cart")
+      expect { order.restart_checkout_flow }.to_not(change { order.state })
     end
   end
 end
