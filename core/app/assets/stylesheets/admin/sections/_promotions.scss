@@ -1,3 +1,8 @@
+@import '../globals/functions';
+@import '../globals/variables_override';
+@import '../globals/variables';
+@import '../globals/mixins';
+
 #general_fields, #expiry_fields {
   border-bottom: none;
   margin-bottom: 0;

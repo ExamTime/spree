@@ -1,3 +1,8 @@
+@import '../globals/functions';
+@import '../globals/variables_override';
+@import '../globals/variables';
+@import '../globals/mixins';
+
 .pagination {
   padding: 10px 0;
   text-align: center;
